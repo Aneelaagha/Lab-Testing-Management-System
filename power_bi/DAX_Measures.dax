@@ -1,0 +1,92 @@
+// ============================================================
+// Lab Testing Management System — Power BI DAX Measures
+// Paste into a .pbix that connects to the Azure SQL views:
+//   vw_ActiveRequests, vw_DashboardSummary, vw_ProductPassRates
+// ============================================================
+
+// ── Table: vw_ActiveRequests ──────────────────────────────────
+
+Total Open Requests =
+COUNTROWS(
+    FILTER(vw_ActiveRequests, vw_ActiveRequests[Status] <> "Completed")
+)
+
+Critical Open =
+CALCULATE(
+    COUNTROWS(vw_ActiveRequests),
+    vw_ActiveRequests[Priority] = "Critical"
+)
+
+Overdue Requests =
+CALCULATE(
+    COUNTROWS(vw_ActiveRequests),
+    vw_ActiveRequests[IsOverdue] = 1
+)
+
+Avg Age (Days) =
+AVERAGE(vw_ActiveRequests[AgeDays])
+
+On-Time Rate % =
+DIVIDE(
+    CALCULATE(COUNTROWS(vw_ActiveRequests), vw_ActiveRequests[IsOverdue] = 0),
+    COUNTROWS(vw_ActiveRequests),
+    0
+) * 100
+
+
+// ── Table: vw_ProductPassRates ────────────────────────────────
+
+Overall Pass Rate % =
+AVERAGE(vw_ProductPassRates[PassRatePct])
+
+Total Tests Run =
+SUMX(vw_ProductPassRates, vw_ProductPassRates[PassCount] + vw_ProductPassRates[FailCount])
+
+Total Pass =
+SUM(vw_ProductPassRates[PassCount])
+
+Total Fail =
+SUM(vw_ProductPassRates[FailCount])
+
+
+// ── Conditional Formatting Helpers ───────────────────────────
+
+Status Color =
+SWITCH(
+    SELECTEDVALUE(vw_ActiveRequests[Status]),
+    "Submitted",   "#3B82F6",
+    "In Review",   "#F59E0B",
+    "In Progress", "#8B5CF6",
+    "Completed",   "#10B981",
+    "Cancelled",   "#6B7280",
+    "#9CA3AF"
+)
+
+Priority Color =
+SWITCH(
+    SELECTEDVALUE(vw_ActiveRequests[Priority]),
+    "Critical", "#EF4444",
+    "High",     "#F97316",
+    "Normal",   "#3B82F6",
+    "Low",      "#6B7280",
+    "#9CA3AF"
+)
+
+
+// ── KPI Card: Turnaround Time ─────────────────────────────────
+// Requires a TestRequests table with SubmittedAt and CompletedAt columns
+
+Avg Turnaround (Days) =
+AVERAGEX(
+    FILTER(TestRequests, NOT ISBLANK(TestRequests[CompletedAt])),
+    DATEDIFF(TestRequests[SubmittedAt], TestRequests[CompletedAt], DAY)
+)
+
+
+// ── Slicer / Filter Defaults ──────────────────────────────────
+
+Is This Week =
+VAR Today = TODAY()
+VAR WeekStart = Today - WEEKDAY(Today, 2) + 1
+RETURN
+    IF(vw_ActiveRequests[SubmittedAt] >= WeekStart && vw_ActiveRequests[SubmittedAt] <= Today, 1, 0)

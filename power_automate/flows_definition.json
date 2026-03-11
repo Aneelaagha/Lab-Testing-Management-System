@@ -1,0 +1,177 @@
+{
+  "flows": [
+    {
+      "name": "Flow_1_NewRequestNotification",
+      "description": "Triggered when a new row is inserted into TestRequests. Sends email to the assigned lab manager and the requester.",
+      "trigger": {
+        "type": "automated",
+        "connector": "SQL Server",
+        "event": "When an item is created (TestRequests)"
+      },
+      "steps": [
+        {
+          "step": 1,
+          "action": "SQL Server – Get row (Engineers)",
+          "purpose": "Fetch requester details",
+          "config": {
+            "table": "Engineers",
+            "row_id": "@triggerBody()?['RequestedByID']"
+          }
+        },
+        {
+          "step": 2,
+          "action": "SQL Server – Get row (Products)",
+          "purpose": "Fetch product name",
+          "config": {
+            "table": "Products",
+            "row_id": "@triggerBody()?['ProductID']"
+          }
+        },
+        {
+          "step": 3,
+          "action": "Office 365 Outlook – Send an email (V2)",
+          "config": {
+            "to": "@body('Get_row_Engineers')?['Email']",
+            "subject": "[Lab] New Test Request @{triggerBody()?['RequestNumber']} – @{triggerBody()?['Priority']} Priority",
+            "body_html": "<p>Hi @{body('Get_row_Engineers')?['FullName']},</p><p>Your test request <strong>@{triggerBody()?['RequestNumber']}</strong> for product <strong>@{body('Get_row_Products')?['ProductName']}</strong> has been received.</p><p>Priority: @{triggerBody()?['Priority']}<br>Due Date: @{triggerBody()?['DueDate']}</p><p>You will be notified as the status progresses.</p>"
+          }
+        },
+        {
+          "step": 4,
+          "action": "Microsoft Teams – Post a message (V3)",
+          "config": {
+            "team": "Lab Team",
+            "channel": "Test Requests",
+            "message": "📋 **New Request: @{triggerBody()?['RequestNumber']}**\n**Product:** @{body('Get_row_Products')?['ProductName']}\n**Priority:** @{triggerBody()?['Priority']}\n**Due:** @{triggerBody()?['DueDate']}\n**Submitted by:** @{body('Get_row_Engineers')?['FullName']}"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Flow_2_StatusChangeNotification",
+      "description": "Triggered when Status column changes in TestRequests. Notifies requester of the new status.",
+      "trigger": {
+        "type": "automated",
+        "connector": "SQL Server",
+        "event": "When an item is modified (TestRequests)",
+        "filter": "Status changed"
+      },
+      "steps": [
+        {
+          "step": 1,
+          "action": "Condition – Check if status changed",
+          "config": {
+            "expression": "@not(equals(triggerBody()?['Status'], triggerBody()?['Status_prev']))"
+          }
+        },
+        {
+          "step": 2,
+          "action": "Office 365 Outlook – Send an email (V2)",
+          "config": {
+            "to": "dynamic – requester email from Engineers table",
+            "subject": "[Lab] Request @{triggerBody()?['RequestNumber']} is now @{triggerBody()?['Status']}",
+            "body_html": "<p>The status of your request <strong>@{triggerBody()?['RequestNumber']}</strong> has been updated to <strong>@{triggerBody()?['Status']}</strong>.</p>"
+          }
+        }
+      ]
+    },
+
+    {
+      "name": "Flow_3_OverdueReminder",
+      "description": "Scheduled flow — runs every weekday at 08:00. Queries usp_GetPendingNotifications and sends reminder emails.",
+      "trigger": {
+        "type": "scheduled",
+        "recurrence": {
+          "frequency": "Week",
+          "interval": 1,
+          "days": ["Monday","Tuesday","Wednesday","Thursday","Friday"],
+          "time": "08:00 UTC"
+        }
+      },
+      "steps": [
+        {
+          "step": 1,
+          "action": "SQL Server – Execute stored procedure",
+          "config": {
+            "procedure": "usp_GetPendingNotifications"
+          }
+        },
+        {
+          "step": 2,
+          "action": "Apply to each – ResultSets Table1",
+          "children": [
+            {
+              "action": "Office 365 Outlook – Send an email (V2)",
+              "config": {
+                "to": "@items('Apply_to_each')?['RequestedByEmail']",
+                "subject": "⚠️ Overdue Test Request: @{items('Apply_to_each')?['RequestNumber']}",
+                "body_html": "<p>Hi @{items('Apply_to_each')?['RequestedBy']},</p><p>Your test request <strong>@{items('Apply_to_each')?['RequestNumber']}</strong> was due on <strong>@{items('Apply_to_each')?['DueDate']}</strong> and is still open (Status: @{items('Apply_to_each')?['Status']}).</p><p>Please contact the lab team to follow up.</p>"
+              }
+            }
+          ]
+        }
+      ]
+    },
+
+    {
+      "name": "Flow_4_ResultRecordedAlert",
+      "description": "Triggered when a new row is inserted into TestResults. Notifies requester when all tests for a request are complete.",
+      "trigger": {
+        "type": "automated",
+        "connector": "SQL Server",
+        "event": "When an item is created (TestResults)"
+      },
+      "steps": [
+        {
+          "step": 1,
+          "action": "SQL Server – Execute query",
+          "config": {
+            "query": "SELECT COUNT(*) AS Remaining FROM RequestTests rt JOIN RequestTests rt2 ON rt2.RequestID = rt.RequestID WHERE rt.RequestTestID = @RequestTestID AND rt2.Status IN ('Pending','Running')",
+            "parameters": { "RequestTestID": "@triggerBody()?['RequestTestID']" }
+          }
+        },
+        {
+          "step": 2,
+          "action": "Condition – All tests done",
+          "config": {
+            "expression": "@equals(body('Execute_query')?['ResultSets']['Table1'][0]['Remaining'], 0)"
+          }
+        },
+        {
+          "step": 3,
+          "action": "[If yes] SQL Server – Execute stored procedure usp_UpdateRequestStatus",
+          "config": {
+            "procedure": "usp_UpdateRequestStatus",
+            "parameters": {
+              "RequestID": "dynamic",
+              "NewStatus": "Completed",
+              "ChangedByID": "system user id",
+              "ChangeNote": "All tests completed – auto-closed by Flow"
+            }
+          }
+        },
+        {
+          "step": 4,
+          "action": "[If yes] Office 365 Outlook – Send email",
+          "config": {
+            "subject": "✅ All Tests Complete – @{triggerBody()?['RequestNumber']}",
+            "body_html": "<p>All test results for request <strong>@{triggerBody()?['RequestNumber']}</strong> have been recorded. Please review the results in the Lab Testing Portal.</p>"
+          }
+        }
+      ]
+    }
+  ],
+
+  "connections_required": [
+    "SQL Server (Azure SQL)",
+    "Office 365 Outlook",
+    "Microsoft Teams"
+  ],
+
+  "environment_variables": {
+    "SQL_CONNECTION_STRING": "Server=<your-server>.database.windows.net;Database=LabTestingDB;",
+    "LAB_MANAGER_EMAIL": "labmanager@yourorg.com",
+    "TEAMS_LAB_CHANNEL_ID": "<channel-id-from-teams>"
+  }
+}
