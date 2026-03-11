@@ -42,12 +42,12 @@ lab-testing-system/
 
 ## Quick Start
 
-### 1 — Azure SQL
+### 1 Azure SQL
 1. Create an Azure SQL Database called `LabTestingDB`.
 2. Run scripts in order: `01_schema.sql` → `02_procedures_views.sql` → `03_seed_data.sql`.
 3. Note your connection string for the next steps.
 
-### 2 — PowerApps
+### 2 PowerApps
 1. Create a new **Canvas App** (tablet layout).
 2. Add a **SQL Server** data source pointing to your Azure SQL DB.
 3. Add these tables/views as data sources:
@@ -57,20 +57,20 @@ lab-testing-system/
 4. Create screens: **Dashboard, Submit Request, Request Detail, Record Results**.
 5. Copy formulas from `powerapps/PowerFx_Formulas.fx` into the matching controls.
 
-### 3 — Power Automate
+### 3 Power Automate
 1. Open **Power Automate** and create 4 new flows using `power_automate/flows_definition.json` as a blueprint.
 2. Set up connections: **SQL Server**, **Office 365 Outlook**, **Microsoft Teams**.
 3. Replace placeholder values (`<your-server>`, `labmanager@yourorg.com`) with real values.
 4. Test each flow with a sample request.
 
-### 4 — Power BI
+### 4 Power BI
 1. Connect Power BI Desktop to your Azure SQL DB.
 2. Import views: `vw_ActiveRequests`, `vw_DashboardSummary`, `vw_ProductPassRates`.
 3. Paste the measures from `power_bi/DAX_Measures.dax` into the model.
 4. Build visuals: KPI cards, bar chart (status), donut (pass/fail), table (active requests).
 5. Publish to Power BI Service and embed the report URL in PowerApps using a Power BI tile.
 
-### 5 — Python API Bridge (optional)
+### 5 Python API Bridge (optional)
 Use if you need a **Custom Connector** in PowerApps or Power Automate.
 
 ```bash
