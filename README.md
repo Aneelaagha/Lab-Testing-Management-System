@@ -1,4 +1,4 @@
-# Lab Testing Management System — Starter Project
+# Lab Testing Management System - Starter Project
 
 A PowerApps + Azure SQL starter for managing product test requests, tracking
 status, recording results, and visualising outcomes in Power BI.
